@@ -60,8 +60,6 @@ This section summarizes the key capabilities and design characteristics of the A
 
 # Top-Level Block Diagram
 
-# Top-Level Block Diagram
-
 The top-level block diagram illustrates the structural organization of the **MSDAP_ALU** module and its major functional components. The design is divided into a control unit and a datapath that together implement the arithmetic operations required by the MSDAP algorithm.
 
 The **ALU_Controller** module implements the finite state machine (FSM) responsible for coordinating the operation of the ALU. It generates control signals for the datapath modules and manages the iteration through the input data using address counters. These counters produce the addresses for the **input samples (x(n))**, **filter coefficients**, and **Rj parameters**.
