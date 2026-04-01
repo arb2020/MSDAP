@@ -1,85 +1,84 @@
-# Mini-Stereo-Digital-Audio-Processor
+# Mini-Stereo-Digital-Audio-Processor (MSDAP)
 
 # Introduction
 
-This block implements the **Arithmetic Logic Unit (ALU)** of the MSDAP architecture. The ALU processes the **Rj parameters**, **filter coefficients**, and **input samples (x(n))** required for the computation.
+This repository implements the **Mini-Stereo Digital Audio Processor (MSDAP)**, a custom ASIC designed to perform real-time FIR filtering on stereo audio input samples. The design accepts serial input data through a **Serial-to-Parallel (S2P)** converter, processes each sample using an **ALU-based FIR filter**, and serializes the output through a **Parallel-to-Serial (P2S)** converter.
 
-The operation of the ALU is controlled by a **finite state machine (FSM)** implemented in the _ALU_Controller_ module. The controller sequentially iterates through the input data using **address counters**, which determine the appropriate timing and ordering of arithmetic operations.
+The operation of the entire chip is orchestrated by a **Data Controller** finite state machine (FSM), which coordinates data flow between all subsystems: memory initialization, coefficient and parameter loading, input sample processing, output serialization, sleep mode, and reset handling.
 
-The ALU datapath performs the required arithmetic processing, including **sign extension**, **addition/subtraction**, and **shifted accumulation**. These operations support the iterative computation required by the MSDAP algorithm.
+The MSDAP architecture supports an efficient sleep mode that automatically suspends processing when a sustained sequence of zero-valued input samples is detected, and resumes upon detection of a non-zero input.
 
-
-# Block Name: MSDAP ALU
-
+# Block Name: MSDAP
 
 # Revisions
 
-| Date (YYYY-MM-DD) | Version   | Description of Changes         | Author               | Reviewer
-|-------------------|-----------|--------------------------------|----------------------|----------------------|
-| 2026-02-26        | `0.0.1`   | Document creation.             | Areeb Iqbal, Arham Virendra Dodal  | Dr. Alice Wang 
+| Date (YYYY-MM-DD) | Version | Description of Changes | Author | Reviewer |
+|-------------------|---------|------------------------|--------|----------|
+| 2026-04-01 | `0.1.0` | Initial full-design documentation. | Areeb Iqbal, Arham Virendra Dodal | Dr. Alice Wang |
 
+---
 
 ## Features
 
-This section summarizes the key capabilities and design characteristics of the ALU block within the MSDAP architecture:
-
 ### Integration
 
--   Integrates with the **ALU_Controller FSM** to coordinate arithmetic operations and control signal sequencing.
-    
--   Interfaces with memory or register blocks containing **Rj parameters, filter coefficients, and input samples (x(n))**.
-    
--   Utilizes **address counters** to iterate through input datasets and synchronize datapath operations.
-    
+- Integrates the **Data Controller FSM**, **S2P**, **P2S**, **ALU**, **coefficient memory**, **Rj memory**, and **x(n) circular buffer** into a single top-level module.
+- Interfaces with an external serial data source via `InputL`, `InputR`, `Frame`, and `InReady`.
+- Produces serial output via `OutputL` and `OutputR`.
+- Supports external reset via the asynchronous `Reset_n` signal.
 
 ### Performance
 
--   Supports efficient **iterative arithmetic processing** required by the MSDAP algorithm.
-    
--   **Addition and subtraction operations are performed in parallel with the fetching of the next input sample**, improving datapath utilization and reducing idle cycles.
-    
+- FIR filter computation runs **in parallel with input serialization**, reducing idle cycles.
+- **Sleep mode** automatically disables ALU and P2S processing when 800 consecutive zero-valued input samples are detected, reducing power consumption.
+- Processing resumes automatically upon detection of a non-zero input sample.
 
 ### Design
 
--   Implements a datapath capable of **sign extension**, **addition/subtraction**, and **accumulation with shifting**.
-    
--   Structured using modular RTL components to improve readability and maintainability.
-    
--   Operates under FSM-based control to ensure deterministic execution of arithmetic sequences.
-    
+- Fully synchronous datapath on `Sclk` with a separate `Dclk` for serial data input.
+- Modular RTL structure with dedicated submodules for control, arithmetic, serialization, and memory.
+- FSM-based control ensures deterministic sequencing of all operations.
+- Circular buffer architecture for efficient x(n) sample management.
 
 ### Debugging
 
--   Address counters and control signals allow **step-by-step verification of datapath operations**.
-    
--   Internal signals can be monitored during simulation to validate arithmetic correctness.
-    
--   Modular structure facilitates **unit-level testing and waveform analysis** during verification.
--  Includes **\$strobe** and  **\$display** lines to track the execution of the **FSM**.
+- `$display` and `$strobe` statements embedded in the Data Controller to trace FSM state transitions and reset events.
+- Internal counters and control signals allow step-by-step verification of datapath operations.
+- Modular structure facilitates unit-level testing and waveform analysis.
 
+---
 
 # Top-Level Block Diagram
 
-The top-level block diagram illustrates the structural organization of the **MSDAP_ALU** module and its major functional components. The design is divided into a control unit and a datapath that together implement the arithmetic operations required by the MSDAP algorithm.
+The top-level MSDAP module integrates the following major functional blocks:
 
-The **ALU_Controller** module implements the finite state machine (FSM) responsible for coordinating the operation of the ALU. It generates control signals for the datapath modules and manages the iteration through the input data using address counters. These counters produce the addresses for the **input samples (x(n))**, **filter coefficients**, and **Rj parameters**.
+The **Data Controller** implements the top-level FSM that manages system initialization, data loading, sample processing, sleep mode, and reset. It generates all control signals for the subsystems and coordinates data flow across clock domains.
 
-The datapath consists of three primary submodules. The **signExt** module performs sign extension on the input samples, expanding the input width from 16 bits to 40 bits to match the internal datapath width. The **addSub** module performs addition or subtraction depending on the opcode provided by the controller. The **oneBitShift** module performs a single-bit shift operation on the intermediate result to support the accumulation process required by the algorithm.
+The **S2P (Serial-to-Parallel)** block receives serial input bits from `InputL` and `InputR` on `Dclk` and assembles them into 16-bit parallel words, which are presented to the Data Controller and memories on `InputReady`.
 
-A feedback path is used to store and reuse the accumulated result during iterative computation. The output of the shifting stage is fed back into the arithmetic unit, enabling sequential accumulation across multiple cycles. The final computed value is exposed at the output (y), while the controller generates a **done** signal to indicate completion of the computation.
+The **Rj Memory** stores up to 16 Rj parameters used by the ALU to control the number of accumulation iterations per output sample.
 
-All functional elements are encapsulated within dedicated submodules, ensuring that the top-level module primarily performs structural integration of the control and datapath components.
+The **Coefficient Memory** stores up to 512 filter coefficients used by the ALU during FIR computation.
+
+The **x(n) Circular Buffer** stores up to 256 input samples in a circular addressing scheme, allowing the ALU to access previous samples required for the FIR filter computation.
+
+The **ALU** performs sign extension, addition/subtraction, and shifted accumulation to compute each output sample. It is documented separately in the ALU subdirectory.
+
+The **P2S (Parallel-to-Serial)** block receives the 40-bit ALU output and serializes it for transmission via `OutputL` and `OutputR`.
 
 ## Diagram
 
+*(To be added)*
+
+---
 
 # Configuration
 
-The `MSDAP_ALU` module does not expose user-configurable parameters. The behavior of the block is defined by the RTL implementation and controlled through the input data (`x`, `coeff`, `rj`) and control signals (`Sclk`, `en_ALU`). The module generates address signals for external memory interfaces and produces the computed output value `y`.
+The `MSDAP` top-level module does not expose user-configurable parameters. Behavior is determined by the RTL implementation and the input data stream. Internal parameters such as memory depths and address widths are fixed by the implementation.
 
 ## Parameters
 
-This module does not expose configurable top-level parameters. The state encodings used by the controller are defined internally in the RTL and are not intended to be modified.
+This module does not expose configurable top-level parameters. State encodings, memory depths, and counter widths are defined internally in the RTL.
 
 ## Typedefs
 
@@ -87,466 +86,384 @@ This design does not declare any typedefs, enumerations, structures, or unions.
 
 ## Interfaces
 
-The top-level ports of the `MSDAP_ALU` module are grouped into **control**, **data**, and **address** interfaces.
+The top-level ports of the `MSDAP` module are grouped into **control**, **serial input**, and **serial output** interfaces.
 
 ### Control Interface
 
 | Port Name | Direction | Type | Description |
 |-----------|-----------|------|-------------|
-| `Sclk` | Input | `wire` | System clock used for sequential state updates in the ALU controller and datapath. |
-| `en_ALU` | Input | `wire` | Enables execution of the ALU. When low, the controller resets its internal state and counters. |
-| `done` | Output | `wire` | Indicates that the current ALU computation has completed. |
+| `Sclk` | Input | `wire` | System clock used for all sequential logic in the datapath and FSM. |
+| `Dclk` | Input | `wire` | Data clock used for serial input sampling in the S2P block. |
+| `Start` | Input | `wire` | Initializes all internal registers and resets the FSM to the `INIT_S` state. |
+| `Reset_n` | Input | `wire` | Active-low asynchronous reset. Clears the x(n) buffer and returns the FSM to the `CLEARING_S` state. |
 
-**Protocol Use:** None. This is a simple synchronous control interface.
-
-### Data Interface
-
-| Port Name | Direction | Type | Description |
-|-----------|-----------|------|-------------|
-| `x` | Input | `wire [15:0]` | Input sample used as part of the ALU computation. |
-| `coeff` | Input | `wire [15:0]` | Filter coefficient used to determine arithmetic operations and address calculations. |
-| `rj` | Input | `wire [15:0]` | Parameter controlling the number of iterations performed during accumulation. |
-| `y` | Output | `wire [39:0]` | Output result produced by the ALU after completion of the computation. |
-
-**Protocol Use:** None. These signals represent direct datapath inputs and outputs.
-
-### Address Interface
+### Serial Input Interface
 
 | Port Name | Direction | Type | Description |
 |-----------|-----------|------|-------------|
-| `rj_address` | Output | `wire [3:0]` | Address used to select the current `rj` parameter. |
-| `coeff_address` | Output | `wire [8:0]` | Address used to index the filter coefficient memory. |
-| `x_address` | Output | `wire [7:0]` | Address used to select the current input sample `x(n)`. |
+| `Frame` | Input | `wire` | Indicates the start of a new 16-bit serial word. |
+| `InputL` | Input | `wire` | Serial data input for the left channel. |
+| `InputR` | Input | `wire` | Serial data input for the right channel. |
+| `InReady` | Output | `wire` | Indicates that the chip is ready to accept input data. |
 
-**Protocol Use:** None. These outputs provide direct addressing for external memory or register blocks.
+### Serial Output Interface
+
+| Port Name | Direction | Type | Description |
+|-----------|-----------|------|-------------|
+| `OutputL` | Output | `wire` | Serial data output for the left channel. |
+| `OutputR` | Output | `wire` | Serial data output for the right channel. |
+| `OutReady` | Output | `wire` | Indicates that the chip is producing valid serial output data. |
 
 ## Design Assumptions
 
-- Input values `x`, `coeff`, and `rj` are **16-bit signed values**.
-- The ALU datapath operates on **40-bit internal precision**, producing a **40-bit output `y`**.
-- Address widths are fixed by the RTL implementation:
-  - `rj_address`: 4 bits (up to 16 entries)
-  - `coeff_address`: 9 bits (up to 512 entries)
-  - `x_address`: 8 bits (up to 256 entries)
-- All interfaces operate synchronously with the system clock `Sclk`.
+- Input values are **16-bit signed** serial words, transmitted MSB first.
+- The ALU datapath operates on **40-bit internal precision**, producing a **40-bit output**.
+- Memory depths are fixed:
+  - Rj memory: 16 entries (4-bit address)
+  - Coefficient memory: 512 entries (9-bit address)
+  - x(n) circular buffer: 256 entries (8-bit address)
+- All datapath operations are synchronous with `Sclk`.
+- Serial input sampling is synchronous with `Dclk`.
+- `Reset_n` is assumed to be asserted in the **first half of a data frame** to allow clean frame discarding.
+
+---
 
 # Clock Domains
 
-The `MSDAP_ALU` block operates entirely within a **single clock domain** driven by the system clock `Sclk`. All submodules, including the controller and datapath components (`signExt`, `addSub`, `oneBitShift`), operate synchronously with this clock.
-
-Since the design uses a single clock domain, **no clock domain crossings (CDC)** exist within the block.
+The MSDAP design operates across **two clock domains**.
 
 ## Clock Domain Table
 
-| Clock Domain | Nominal Frequency | Supported Dynamic Range |
-|---------------|------------------|-------------------------|
-| `Sclk` | System dependent | Determined by system integration |
-| `Dclk` | System dependent | Determined by system integration |
+| Clock Domain | Nominal Frequency | Description |
+|---|---|---|
+| `Sclk` | 26.88 MHz (37.2 ns period) | Drives all sequential logic in the Data Controller, ALU, memories, and P2S. |
+| `Dclk` | 768 kHz (1032.08 ns period) | Drives the S2P serializer for input data sampling. |
 
 **Notes**
 
-- All sequential elements in the controller and datapath are triggered on the **rising edge of `Sclk`** so far. An additional `Dclk` will be added in the coming release.
-- The clock frequency is determined by the ASIC implementation. Recommended frequency for this device is **26.88 MHz** to **37.2 ns**.
-- 
+- All sequential elements in the Data Controller, ALU, and P2S are triggered on the **rising edge of `Sclk`**.
+- The S2P block operates on `Dclk`.
+- The `InReady` and `Frame` signals cross from the `Dclk` domain into the `Sclk` domain and is treated as clock domain crossing (CDC) paths.
+
 ## Annotated Block Diagram
 
-The same top-level block diagram shown previously applies here. All submodules currently belong to the **`Sclk` clock domain**, including:
-
-- `ALU_Controller`
-- `signExt`
-- `addSub`
-- `oneBitShift`
-
-Since the entire block operates within a single clock domain, no clock-domain crossing logic is required thus far. 
+- `Data Controller` — `Sclk` domain
+- `ALU` — `Sclk` domain
+- `Coefficient Memory` — `Sclk` domain
+- `Rj Memory` — `Sclk` domain
+- `x(n) Circular Buffer` — `Sclk` domain
+- `P2S` — `Sclk` domain
+- `S2P` — `Dclk` domain
 
 ---
 
 # Reset Domains
 
-The `MSDAP_ALU` design does not include a dedicated reset input. Instead, the module uses the control signal `en_ALU` to initialize and clear the internal state of the controller and datapath.
-
-When `en_ALU` is deasserted (`0`), internal registers, counters, and control signals are reset to their initial values. When `en_ALU` is asserted (`1`), the controller begins execution of the ALU operation.
+The MSDAP design has two reset mechanisms.
 
 ## Reset Domains Table
 
-| Reset Name | Synchronous/Asynchronous | Active High/Low | Associated Clock (if synchronous) | Description |
-|------------|--------------------------|-----------------|-----------------------------------|-------------|
-| `en_ALU` | Synchronous | Active Low (reset when `0`) | `Sclk` | Clears internal registers, counters, and FSM state when the ALU is disabled |
+| Reset Name | Synchronous/Asynchronous | Active High/Low | Associated Clock | Description |
+|---|---|---|---|---|
+| `Start` | Synchronous | Active High | `Sclk` | Initializes all registers, counters, and FSM state to known initial values at power-on or system start. |
+| `Reset_n` | Asynchronous | Active Low | N/A | Clears the x(n) sample buffer and returns the FSM to `CLEARING_S`. Does not reinitialize coefficients or Rj parameters. |
 
-## Annotated Block Diagram
+## Reset Behavior
 
-All submodules share the same reset behavior controlled by `en_ALU`. When `en_ALU` is low, the following elements are reset:
+### Start Reset
 
-- FSM state register (`currentState`)
-- Address counters (`coeffCounter`, `rjCounter`)
-- Address outputs (`x_address`, `coeff_address`, `rj_address`)
-- Control outputs (`load`, `shift_en`, `feedbackLoad`, `done`)
+When `Start` is asserted, the following are initialized on the next rising edge of `Sclk`:
 
-The reset behavior is applied synchronously with the system clock.
+- All counters (`initCounter`, `rjCounter`, `coeffCounter`, `xCounter`, `zeroCounter`) reset to zero.
+- All control outputs (`en_S2P`, `en_P2S`, `en_ALU`, `EnRj`, `EnCoeff`, `EnX`, `WMode`, `xWMode`) deasserted.
+- FSM transitions to `INIT_S`.
+
+### Reset_n Reset
+
+When `Reset_n` is deasserted (low), the following occur:
+
+- FSM transitions to `CLEARING_S` from any active state.
+- `xCounter` is reset to zero and the x(n) buffer is swept and zeroed.
+- After the buffer sweep completes (`xCounter == 0xFF`), the FSM returns to `WAIT_INPUT_S`.
+- Coefficient memory and Rj memory are **not** affected.
 
 ## Custom Reset Procedures
 
-The reset procedure for this block is defined by the behavior of the `en_ALU` signal.
+1. Assert `Reset_n = 0` at the start of a data frame (first half of frame per specification).
+2. The current frame is discarded and `xCounter` is cleared.
+3. The FSM enters `CLEARING_S` and sweeps the x(n) buffer to zero over 256 cycles.
+4. On completion, the FSM returns to `WAIT_INPUT_S` and normal processing resumes.
 
-### Reset Procedure
-
-1. Set `en_ALU = 0`.
-2. On the next rising edge of `Sclk`, all internal registers and counters are cleared.
-3. The FSM returns to the `IDLE_S` state.
-4. When `en_ALU = 1`, the controller transitions to the execution state and normal operation begins.
-
-## References to External Documents
-
-None. The reset behavior is fully defined within the RTL implementation of the `MSDAP_ALU` block.
-A proper reset signal will be added once the full project is complete.
-
+---
 
 # Arbitration, Fairness, QoS, and Forward Progress Guarantees
 
-The `MSDAP_ALU` block does not implement arbitration between multiple traffic classes or concurrent transactions. The design processes a single stream of computation under the control of the `ALU_Controller` finite state machine (FSM). As a result, arbitration policies, fairness mechanisms, and QoS features are not required.
+The MSDAP block does not implement arbitration between multiple traffic classes or concurrent transactions. All data processing follows a single sequential flow controlled by the Data Controller FSM.
 
 ## Arbitration and Fairness
 
-The design does not contain shared resources accessed by multiple independent requesters. All datapath operations are scheduled and controlled by the `ALU_Controller` FSM, which sequences operations deterministically.
-
-- **Arbitration Policy**: None. Only one computation flow is active at a time.
-- **Fairness**: Not applicable since no competing traffic classes exist.
-- **Configurability**: No arbitration or QoS configuration parameters are provided.
+- **Arbitration Policy:** None. A single computation flow is active at all times.
+- **Fairness:** Not applicable. No competing requesters exist.
+- **Configurability:** No arbitration or QoS configuration parameters are exposed.
 
 ## Quality-of-Service (QoS)
 
-The `MSDAP_ALU` block does not implement Quality-of-Service (QoS) mechanisms. The block performs a single computation sequence initiated by the `en_ALU` signal and continues until completion.
-
-- **QoS Features**: None.
-- **Impact on Performance**: Performance is determined solely by the controller state machine and datapath latency.
+- **QoS Features:** None.
+- **Performance:** Determined by the FSM sequencing, memory access latency, and ALU computation time.
 
 ## Forward Progress Guarantees
 
-Forward progress is guaranteed by the deterministic state transitions of the `ALU_Controller` FSM. The controller iterates through coefficient and input sample addresses until the computation is complete.
+Forward progress is guaranteed by the deterministic state transitions of the Data Controller FSM.
 
-- **Deadlock and Livelock Prevention**: The FSM contains a finite number of states and deterministic transitions, ensuring that the computation always progresses toward the `DONE_S` state.
-- **Assumptions**: External memory supplying `x`, `coeff`, and `rj` values responds correctly to the generated address signals.
-- **Proof Outline**: Since the FSM progresses through a bounded sequence of states (`IDLE_S → EXEC_S → ADD_N_SHIFT_S → SHIFT_S → FINAL_ANS_S → DONE_S → RESET_S`), and counters are monotonically incremented toward fixed bounds, the controller is guaranteed to eventually reach the completion state (`DONE_S`).
+- **Deadlock and Livelock Prevention:** The FSM contains a finite number of states with deterministic transitions. Each state either advances a counter toward a fixed bound or waits on an externally driven signal (`Frame`, `InputReady`, `done`, `DataDone`).
+- **Sleep Mode:** The FSM enters `SLEEPING_S` when 800 consecutive zero-valued samples are detected. It exits automatically when a non-zero sample is received, ensuring forward progress resumes without external intervention.
+- **Assumptions:** External logic correctly drives `Frame`, `InputReady`, `done`, and `DataDone` according to protocol.
+
+---
 
 # Debugging
 
-The `MSDAP_ALU` block includes several simulation-oriented debugging mechanisms to assist with verification and diagnostics during development. These mechanisms are intended for use in simulation environments only and are not part of the synthesized hardware.
-
 ## System Tasks for Simulation Debugging
 
-SystemVerilog system tasks are used to monitor the internal state of the controller during simulation. In particular, the `$display` system task is used to print diagnostic information about the finite state machine and internal counters.
+The Data Controller includes embedded `$display` statements to trace FSM execution:
+
+- FSM state transitions: current state and next state are printed every clock cycle.
+- Reset events: a message is printed on every cycle the FSM is in `CLEARING_S`, including the current `xCounter` value.
+- Zero counter tracking: optional display of `zeroCounter` and `xCounter` values during `WORKING_S` (currently commented out, can be re-enabled for debug).
 
 Example debug output includes:
 
-- Current FSM state and next state
-- Counter values (`rjCounter`, `coeffCounter`)
-- Address values used during iteration
-- Intermediate values used in the datapath
-
-These messages allow developers to trace the execution flow of the controller and verify that state transitions and arithmetic sequencing occur as expected.
+- `[time] mainSTATE=X -> NEXT=Y`
+- `[time] RESET SUCCESS | xCounter=Z`
 
 ## DPI-Based Debugging Support
 
-The design supports integration with external debugging utilities through the **SystemVerilog Direct Programming Interface (DPI)**. DPI functions can be used during simulation to export internal signal values or interact with external software tools for advanced diagnostics.
-
-Typical DPI debugging uses include:
-
-- Exporting internal signals to external analysis tools
-- Logging intermediate datapath values
-- Integrating simulation with higher-level verification frameworks
-
-These DPI hooks are intended for simulation environments and are not included in the synthesized hardware implementation.
+The design supports integration with external debugging utilities through the **SystemVerilog Direct Programming Interface (DPI)**. The ALU submodule uses DPI-C to validate arithmetic results against a reference C model.
 
 ## Mission-Mode Behavior
 
-All debugging mechanisms described in this section are **non-synthesizable** and are used solely during simulation and verification. They do not affect the functional behavior, timing, or synthesized implementation of the `MSDAP_ALU` block.
+All `$display` and `$strobe` statements are **non-synthesizable** and are used solely during simulation and verification. They do not affect the functional behavior, timing, or synthesized implementation of the MSDAP.
 
+---
 
 # Synthesis
 
-This section presents the synthesis results for the `MSDAP_ALU` design targeting an ASIC implementation. The design was synthesized using a standard-cell library to evaluate timing performance and hardware resource utilization.
-
-The results summarize the estimated operating frequency, cell area, and register count obtained from logic synthesis.
+Synthesis has not yet been performed for the full MSDAP design. This section will be updated once synthesis results are available.
 
 ## Synthesis Results Table
 
 | Technology Library | Target Frequency (MHz) | Achieved Frequency (MHz) | Cell Area (µm²) | Combinational Cells | Sequential Cells (FFs) | Comments |
-|--------------------|------------------------|---------------------------|-----------------|---------------------|------------------------|----------|
-| LIB_A              | XXX                    | XXX                       | XXXX            | XXXX                | XXXX                   | Summary of synthesis results |
+|---|---|---|---|---|---|---|
+| — | — | — | — | — | — | Pending synthesis |
 
 ## Additional Comments
 
 ### Observations
 
-- **Performance:**  
-  The maximum operating frequency is determined by the critical path within the ALU datapath, primarily involving the addition/subtraction and shift operations.
+- **Performance:** The critical path is expected to run through the ALU datapath, primarily through the addition/subtraction and shift accumulation stages.
+- **Area:** The design area will be dominated by the coefficient memory, x(n) circular buffer, and ALU datapath registers.
+- **Recommendations:** Potential optimizations include pipelining the ALU datapath and reducing memory access latency through pre-fetching.
 
-- **Area:**  
-  The synthesized area is dominated by the arithmetic datapath components and controller registers. The FSM and address counters contribute a relatively small portion of the overall area.
-
-- **Recommendations:**  
-  Potential improvements to performance and area include:
-  - Introducing pipelining in the datapath.
-  - Optimizing arithmetic operations for the target standard-cell library.
-  - Reducing datapath width where algorithmically feasible.
+---
 
 # Verification
 
-This section describes the verification methodology used to validate the functional correctness of the `MSDAP_ALU` design. Verification was primarily performed using RTL simulation and waveform analysis to ensure that the controller state machine, datapath operations, and address generation behaved according to the design specification.
-
 ## Test Environment
 
-Verification was conducted using a SystemVerilog testbench that provides input stimuli (`x`, `coeff`, `rj`) and monitors the output signals (`y`, `done`). Simulation was used to verify correct FSM transitions, arithmetic operations, and address generation during execution.
+Verification was conducted using a SystemVerilog testbench that provides serial input stimuli through `InputL`, `Frame`, and `Dclk`, and monitors the serial output via `OutputL` and `OutReady`. Simulation was used to verify FSM transitions, memory initialization, FIR computation, sleep mode entry and exit, and reset behavior.
 
 ### Test Environment Table
 
 | Tool | Version | Relevant Configuration |
-|-----|------|------------------------|
-| Synopsys VCS / ModelSim / Xcelium | [version] | RTL simulation with SystemVerilog testbench |
-| DVT IDE | [version] | Waveform inspection and design visualization |
-| GTKWave / Built-in Viewer | [version] | Signal waveform analysis |
+|---|---|---|
+| DSim | Current | RTL simulation with SystemVerilog testbench |
+| GTKWave | Current | Signal waveform analysis |
 
 ## Tests
-
-Several categories of tests were used to validate the functionality of the design.
 
 ### Tests Table
 
 | Test Type | Description | Tools Used |
-|----------|-------------|-----------|
-| Functional Simulation | Verified correct arithmetic operations, FSM transitions, and address generation. | Simulator |
-| Directed Tests | Specific input patterns applied to validate controller behavior and datapath operations. | Simulator |
-| Regression Tests | Multiple input vectors tested to ensure stable operation across different conditions. | Simulator |
+|---|---|---|
+| Functional Simulation | Verified FSM transitions, memory loading, ALU computation, and serial output. | DSim |
+| Directed Tests | Specific input sequences applied to validate each FSM state. | DSim |
+| Sleep Mode Test | Sustained zero input applied to verify `SLEEPING_S` entry and exit. | DSim |
+| Reset Test | `Reset_n` asserted mid-stream to verify buffer clearing and FSM recovery. | DSim |
+| Output Comparison | Serial output compared against reference output file (`data_sample.out`). | DSim |
 
 ### Test Results
 
 | Test Case | Description | Result |
-|----------|-------------|--------|
-| Basic Operation | Verified ALU execution for a single iteration of input data. | Pass |
-| Address Generation | Verified correct incrementing of `x_address`, `coeff_address`, and `rj_address`. | Pass |
-| FSM Operation | Verified correct transitions between controller states. | Pass |
-| Completion Signal | Verified `done` signal assertion upon completion of computation. | Pass |
-
-All tests completed successfully without functional errors.
+|---|---|---|
+| Memory Initialization | Verified coefficient, Rj, and x(n) memories zeroed on startup. | Pass |
+| Rj Loading | Verified 16 Rj values loaded correctly into Rj memory. | Pass |
+| Coefficient Loading | Verified 512 coefficients loaded correctly into coefficient memory. | Pass |
+| FIR Computation | Verified ALU output matches expected reference values. | Pass |
+| Sleep Mode Entry | Verified FSM enters `SLEEPING_S` after 800 zero samples. | Pass |
+| Sleep Mode Exit | Verified FSM returns to `WORKING_S` on non-zero input. | Pass |
+| Reset Handling | Verified x(n) buffer is cleared and FSM recovers after `Reset_n`. | Pass |
+| Serial Output | Verified 40-bit output words serialized correctly via P2S. | Pass |
 
 ## Benchmarks
-
-Basic performance benchmarks were collected to evaluate latency and execution characteristics of the design.
 
 ### Benchmarks Table
 
 | Metric | Value | Comments |
-|------|------|---------|
-| Clock Frequency | System dependent | Determined by synthesis constraints |
-| Latency | Dependent on `rj` and coefficient count | Determined by FSM iterations |
-| Throughput | One output per execution cycle sequence | Controlled by FSM |
-
-### Benchmarks Results
-
-The latency of the design is determined by the number of iterations performed by the controller. Each iteration corresponds to arithmetic operations followed by shift and feedback stages.
+|---|---|---|
+| Clock Frequency | 26.88 MHz, 768 kHz | Determined by system integration |
+| Input Word Width | 16 bits | Serial, MSB first |
+| Output Word Width | 40 bits | Serial, MSB first |
+| FIR Filter Depth | Up to 512 taps | Determined by coefficient count |
+| Sleep Threshold | 800 consecutive zero samples | Configurable in RTL |
 
 ## Issues and Resolutions
 
 ### Issues and Resolutions Table
 
 | Issue | Description | Resolution |
-|-----|-------------|-----------|
-| Address calculation mismatch | Incorrect address values observed during early testing. | Corrected counter update logic in the controller. |
-| FSM transition bug | Incorrect transition between execution states detected. | Adjusted next-state logic in the FSM. |
+|---|---|---|
+| Sleep state corruption | Last output word before sleep was corrupted due to P2S being cut off mid-word. | Added `sleepingState` latch and gated FSM transition on `DataDone`. |
+| Reset mid-stream | `Reset_n` assertion mid-word caused partial frame to be processed. | Reset now only takes effect at frame boundaries per specification. |
+| ALU x address mismatch | ALU was starting from wrong x(n) position after sleep exit. | `xCounter` and ALU x address are now reset to zero on sleep exit. |
+| Zero counter runaway | `zeroCounter` continued incrementing past threshold during sleep entry. | Sleep entry logic restructured using `else if` chains to prevent counter overrun. |
+| Output count reset on Reset_n | `out_word_count` was reset to zero on `Reset_n`, breaking output file capture. | Output counter decoupled from `Reset_n` in testbench. |
 
 ## Verification Summary
 
-The `MSDAP_ALU` design was verified using simulation-based functional testing. The verification process confirmed correct operation of the FSM controller, datapath arithmetic operations, and address generation logic. All directed and regression tests passed successfully, and the design produced the expected outputs for the tested input cases.
-
-
-# ALU_Controller
-
-## Description
-
-The `ALU_Controller` submodule implements the control logic for the MSDAP ALU. It is realized as a finite state machine (FSM) that sequences the arithmetic datapath and generates the address signals required to access the `rj` parameters, filter coefficients, and input samples.
-
-The controller is responsible for:
-- generating the control signals `opcode`, `load`, `shift_en`, `feedbackLoad`, `clear`, and `done`
-- iterating through coefficients and input samples using internal counters
-- determining when addition/subtraction and shift operations must be performed
-- resetting the iteration state once a computation is complete
-
-The FSM operates through the states `IDLE_S`, `EXEC_S`, `ADD_N_SHIFT_S`, `SHIFT_S`, `FINAL_ANS_S`, `DONE_S`, and `RESET_S`. During execution, the controller computes the sample address, selects the arithmetic operation using `coeff[8]`, and advances the internal counters until the final result is ready.
-
-## I/O Table
-
-### Input Table
-
-| Input Name | Direction | Type | Description |
-|------------|-----------|------|-------------|
-| `rj` | Input | `wire [15:0]` | Iteration bound used to determine when the inner accumulation loop is complete. |
-| `coeff` | Input | `wire [15:0]` | Filter coefficient input; `coeff[7:0]` contributes to address generation and `coeff[8]` selects add/subtract operation. |
-| `Sclk` | Input | `wire` | System clock for sequential state and output updates. |
-| `en_ALU` | Input | `wire` | Active-high enable signal. When low, the controller returns to its idle/reset condition. |
-
-### Output Table
-
-| Output Name | Direction | Type | Description |
-|-------------|-----------|------|-------------|
-| `rj_address` | Output | `reg [3:0]` | Address used to select the current `rj` parameter. |
-| `coeff_address` | Output | `reg [8:0]` | Address used to access the current filter coefficient. |
-| `x_address` | Output | `reg [7:0]` | Address used to access the current input sample. |
-| `opcode` | Output | `reg` | Arithmetic control signal; selects addition or subtraction in the datapath. |
-| `load` | Output | `reg` | Enables accumulation in the `addSub` unit. |
-| `shift_en` | Output | `reg` | Enables the shift operation in the `oneBitShift` unit. |
-| `done` | Output | `reg` | Indicates completion of the current computation. |
-| `feedbackLoad` | Output | `reg` | Enables loading of the shifted result back into the accumulator. |
-| `clear` | Output | `reg` | Clears datapath state during reset/initialization. |
-
-## Submodule Diagram
-
-The `ALU_Controller` submodule consists of:
-- a sequential state register updated on `Sclk`
-- combinational next-state and control generation logic
-- internal counters for coefficient, `rj`, and sample addressing
-- output registers that drive the ALU datapath and memory interfaces
-
-{!diagrams/alu_controller.html!}
-
-## SystemVerilog Implementation
-
-The controller is implemented using two main processes:
-- a **sequential always block** triggered on the rising edge of `Sclk`, which updates the current state, counters, addresses, and registered outputs
-- a **combinational always block** that computes the next state and next values of all internal registers and control signals
-
-In the `EXEC_S` state, the controller computes the next sample address as `xVal - coeff[7:0]`, asserts `load`, and sets `opcode` from `coeff[8]`. The coefficient and loop counters are incremented until the `rj` limit is reached, at which point the controller transitions to the shift states. After the final shift, the `done` signal is asserted and the controller returns to the reset and idle states.
+The MSDAP design was verified using simulation-based functional testing across all major operating modes. Correct operation was confirmed for memory initialization, Rj and coefficient loading, FIR filter computation, sleep mode entry and exit, reset recovery, and serial output formatting. Output values were compared against a reference file to validate arithmetic correctness across multiple input sequences.
 
 ---
 
-# signExt
+# Data Controller
 
 ## Description
 
-The `signExt` submodule performs sign extension of the 16-bit input sample to the 40-bit internal datapath width. This ensures that signed arithmetic can be performed correctly in the downstream accumulator and shift stages.
+The `dataController` submodule implements the top-level FSM that orchestrates all operations of the MSDAP chip. It sequences memory initialization, serial input reception, ALU computation, output serialization, sleep mode, and reset handling.
 
-In addition to sign extension, the module appends 16 least-significant zero bits to align the input value with the fixed-point format used by the datapath.
+The controller generates all enable signals, write enables, and address signals for the S2P, ALU, memories, and P2S subsystems. It tracks the number of consecutive zero-valued input samples and automatically enters sleep mode when the threshold is exceeded.
 
 ## I/O Table
 
 ### Input Table
 
 | Input Name | Direction | Type | Description |
-|------------|-----------|------|-------------|
-| `in` | Input | `wire [INPUTSIZE-1:0]` | Input sample value to be sign-extended. |
+|---|---|---|---|
+| `Sclk` | Input | `wire` | System clock for all sequential state updates. |
+| `Dclk` | Input | `wire` | Data clock (passed through to S2P). |
+| `Start` | Input | `wire` | Initializes all internal state on assertion. |
+| `Reset_n` | Input | `wire` | Active-low reset. Clears x(n) buffer and returns FSM to `CLEARING_S`. |
+| `Frame` | Input | `wire` | Indicates start of a new serial word from the external source. |
+| `InputL` | Input | `wire` | Serial left channel input bit. |
+| `InputR` | Input | `wire` | Serial right channel input bit. |
+| `zeroFlagfromS2P` | Input | `wire` | Asserted by S2P when the current deserialized word is zero. |
+| `InputReady` | Input | `wire` | Asserted by S2P when a complete 16-bit word is ready. |
+| `Datain` | Input | `wire [15:0]` | Deserialized 16-bit word from the S2P block. |
+| `done` | Input | `wire` | Asserted by ALU when computation for the current sample is complete. |
+| `DataDone` | Input | `wire` | Asserted by P2S when the current 40-bit output word has been fully serialized. |
 
 ### Output Table
 
 | Output Name | Direction | Type | Description |
-|-------------|-----------|------|-------------|
-| `out` | Output | `wire [OUTPUTSIZE-1:0]` | Sign-extended and left-shifted output value used by the arithmetic datapath. |
+|---|---|---|---|
+| `InReady` | Output | `reg` | Signals to the external source that the chip is ready to receive input. |
+| `OutputL` | Output | `reg` | Serial left channel output bit. |
+| `OutputR` | Output | `reg` | Serial right channel output bit. |
+| `Reset_in` | Output | `reg` | Active-low reset forwarded to S2P and memory blocks. |
+| `Reset_ALU` | Output | `reg` | Active-low reset forwarded to the ALU. |
+| `en_S2P` | Output | `reg` | Enables the S2P serializer. |
+| `EnRj` | Output | `reg` | Enables write to Rj memory. |
+| `EnCoeff` | Output | `reg` | Enables write to coefficient memory. |
+| `EnX` | Output | `reg` | Enables write to x(n) circular buffer. |
+| `WMode` | Output | `reg` | Write mode enable for coefficient and Rj memories. |
+| `xWMode` | Output | `reg` | Write mode enable for x(n) circular buffer. |
+| `WAddr` | Output | `reg [8:0]` | Write address for coefficient and Rj memories. |
+| `xWAddr` | Output | `reg [7:0]` | Write address for x(n) circular buffer. |
+| `en_ALU` | Output | `reg` | Enables ALU computation. |
+| `en_P2S` | Output | `reg` | Enables P2S serializer output. |
 
-## Submodule Diagram
+## FSM State Table
 
-The `signExt` submodule is purely combinational. It inspects the sign bit of the input and produces either a zero-extended or sign-extended 40-bit output.
-
-{!diagrams/signext.html!}
-
-## SystemVerilog Implementation
-
-The module is parameterized by `INPUTSIZE` and `OUTPUTSIZE`, with default values of 16 and 40, respectively. The output assignment is implemented using a continuous assignment:
-
-- if the input is negative, the upper bits are filled with `1`s
-- if the input is non-negative, the upper bits are filled with `0`s
-- the lower 16 bits are padded with zeros
-
-This creates a 40-bit fixed-point representation suitable for the ALU datapath.
+| State | Encoding | Description |
+|---|---|---|
+| `INIT_S` | `4'b0000` | Waits for a zero-valued word to confirm the serial link is active. |
+| `WAIT_RJ_S` | `4'b0001` | Waits for a `Frame` pulse before reading Rj parameters. |
+| `READ_RJ_S` | `4'b0010` | Reads 16 Rj values into Rj memory. |
+| `WAIT_COEFF_S` | `4'b0011` | Waits for a `Frame` pulse before reading filter coefficients. |
+| `READ_COEFF_S` | `4'b0100` | Reads 512 filter coefficients into coefficient memory. |
+| `WAIT_INPUT_S` | `4'b0101` | Waits for a `Frame` pulse before processing input samples. |
+| `WORKING_S` | `4'b0110` | Stores input samples, runs ALU, and serializes output. |
+| `CLEARING_S` | `4'b0111` | Sweeps x(n) buffer to zero following a reset event. |
+| `SLEEPING_S` | `4'b1000` | Suspends processing while input is silent. Exits on non-zero input. |
+| `INIT_COUNT_S` | `4'b1001` | Initializes all memories to zero after startup. |
 
 ---
 
-# addSub
+# S2P (Serial-to-Parallel)
 
 ## Description
 
-The `addSub` submodule implements the accumulator and arithmetic unit of the datapath. It stores the current accumulated result and updates it based on the control signals generated by the controller.
-
-The module supports three main operations:
-- **clear**, which resets the accumulator to zero
-- **feedback load**, which loads the shifted result back into the accumulator
-- **add/subtract**, which updates the accumulator by adding or subtracting the current input operand
-
-Subtraction is implemented using two's complement arithmetic.
+*(To be documented. The S2P block receives serial bits from `InputL` and `InputR` on `Dclk` and assembles them into 16-bit parallel words. It asserts `InputReady` when a complete word is available and `zeroFlagfromS2P` when the word is zero-valued.)*
 
 ## I/O Table
 
-### Input Table
-
-| Input Name | Direction | Type | Description |
-|------------|-----------|------|-------------|
-| `clk` | Input | `wire` | Clock used to update the accumulator register. |
-| `clear` | Input | `wire` | Asynchronous clear signal that resets the accumulator. |
-| `load` | Input | `wire` | Enables arithmetic accumulation. |
-| `feedbackLoad` | Input | `wire` | Enables loading of the feedback value into the accumulator. |
-| `opcode` | Input | `wire` | Selects arithmetic mode: addition or subtraction. |
-| `in` | Input | `wire [39:0]` | Current datapath input operand. |
-| `feedback` | Input | `wire [39:0]` | Shifted feedback value loaded into the accumulator. |
-
-### Output Table
-
-| Output Name | Direction | Type | Description |
-|-------------|-----------|------|-------------|
-| `shiftOp` | Output | `wire [39:0]` | Current accumulator result forwarded to the shift stage. |
+*(To be added)*
 
 ## Submodule Diagram
 
-The `addSub` submodule contains a 40-bit result register, arithmetic logic for addition/subtraction, and a feedback path for reloading shifted intermediate values.
-
-{!diagrams/addsub.html!}
+*(To be added)*
 
 ## SystemVerilog Implementation
 
-The module is implemented as a clocked process sensitive to `posedge clk` and `posedge clear`. The internal register `result` stores the accumulated value.
-
-Operation priority is as follows:
-1. if `clear` is asserted, `result` is reset to zero
-2. else if `feedbackLoad` is asserted, `result` is loaded from `feedback`
-3. else if `load` is asserted, `result` is updated by either:
-   - `result + in` when `opcode = 0`
-   - `result + ~in + 1` when `opcode = 1`
-
-The output `shiftOp` is continuously assigned to the internal `result` register.
+*(To be added)*
 
 ---
 
-# oneBitShift
+# P2S (Parallel-to-Serial)
 
 ## Description
 
-The `oneBitShift` submodule performs a one-bit arithmetic right shift on the accumulator output. This stage is used to scale the intermediate result while preserving the sign of signed values.
-
-The module stores the shifted result in an output register and updates it only when shifting is enabled.
+*(To be documented. The P2S block receives the 40-bit ALU output and serializes it for transmission via `OutputL` and `OutputR` on `Sclk`. It asserts `DataDone` when the full 40-bit word has been transmitted.)*
 
 ## I/O Table
 
-### Input Table
-
-| Input Name | Direction | Type | Description |
-|------------|-----------|------|-------------|
-| `clk` | Input | `wire` | Clock used to register the shifted output. |
-| `addOp` | Input | `wire [39:0]` | Input value from the accumulator stage. |
-| `clear` | Input | `wire` | Clears the output register. |
-| `shift_en` | Input | `wire` | Enables the one-bit shift operation. |
-
-### Output Table
-
-| Output Name | Direction | Type | Description |
-|-------------|-----------|------|-------------|
-| `yOut` | Output | `reg [39:0]` | Shifted output value forwarded to the feedback path or top-level output. |
+*(To be added)*
 
 ## Submodule Diagram
 
-The `oneBitShift` submodule contains a registered arithmetic right shifter. The most significant bit is replicated during the shift to preserve signed-number representation.
-
-{!diagrams/onebitshift.html!}
+*(To be added)*
 
 ## SystemVerilog Implementation
 
-The module is implemented as a sequential process triggered on the rising edge of `clk`. When `clear` is asserted, the output register is reset to zero. When `shift_en` is asserted, the input `addOp` is shifted right by one bit using arithmetic sign extension:
+*(To be added)*
 
-```systemverilog
-yOut <= {addOp[39], addOp[39:1]};
+---
 
+# Memories
+
+## Rj Memory
+
+*Stores up to 16 Rj parameters. Written during `READ_RJ_S` and read by the ALU during computation. 4-bit address, 16-bit data width.*
+
+## Coefficient Memory
+
+*Stores up to 512 filter coefficients. Written during `READ_COEFF_S` and read by the ALU during computation. 9-bit address, 16-bit data width.*
+
+## x(n) Circular Buffer
+
+*Stores up to 256 input samples in a circular addressing scheme. Written during `WORKING_S` and read by the ALU. 8-bit address, 16-bit data width. Cleared to zero during `CLEARING_S` and `INIT_COUNT_S`.*
+
+---
+
+# ALU
+
+See [`alu/README.md`](alu/README.md) for full documentation of the ALU submodule, including the ALU_Controller FSM, signExt, addSub, and oneBitShift submodules.
+
+---
+
+## Contributors
+
+- Areeb Iqbal
+- Arham Virendra Dodal
+
+**Advisor:** Dr. Alice Wang  
+**Course:** MSDAP ASIC Design — UT Dallas
