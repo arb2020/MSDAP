@@ -15,8 +15,8 @@ module oneBitShift (
         end
 
         // Debug strobe (prints AFTER yOut updates)
-        $strobe("[%0t] clear=%b shift_en=%b addOp=%h yOut=%h",
-                $time, clear, shift_en, addOp, yOut);
+        //$strobe("[%0t] clear=%b shift_en=%b addOp=%h yOut=%h",
+                //$time, clear, shift_en, addOp, yOut);
     end
 
 endmodule : oneBitShift

@@ -5,8 +5,9 @@ module ALU_Controller (
     input wire [15:0] coeff,
     output reg [8:0] coeff_address,
     output reg [7:0] x_address,
-    input Sclk, en_ALU,
+    input Sclk, en_ALU, Reset_in,
     output reg opcode,
+    output reg Enable,
     output reg load, shift_en, done, feedbackLoad, clear
 
 );
@@ -34,14 +35,14 @@ module ALU_Controller (
     parameter DONE_S   = 3'b101;
     parameter FINAL_ANS_S = 3'b110;
 
-    always @(posedge Sclk) begin
-        if(!en_ALU) begin
+    always @(posedge Sclk or negedge Reset_in) begin
+        if(!Reset_in) begin
             rjCounter <= 16'h0000;
             rjAddr <= 4'b0000;
             rj_address <= 4'h0;
             coeffCounter <= 9'b000000000;
             coeff_address <= 9'h000;
-            xVal <= 16'h0000;
+            xVal <= 8'h00;
             xAddr <= 8'h00;
             x_address <= 8'h00;
             shift_en <= 1'b0;
@@ -51,7 +52,25 @@ module ALU_Controller (
             currentState <= IDLE_S;
             clear <= 1'b1;
             opcode <= 1'b0;
+            Enable <= 1'b0;
         end
+        else if(!en_ALU) begin
+            rjCounter <= 16'h0000;
+            rjAddr <= 4'b0000;
+            rj_address <= 4'h0;
+            coeffCounter <= 9'b000000000;
+            coeff_address <= 9'h000;
+            xAddr <= 8'h00;
+            x_address <= 8'h00;
+            shift_en <= 1'b0;
+            load <= 1'b0;
+            feedbackLoad <= 1'b0;
+            done <= 1'b0;
+            Enable <= 1'b0;
+            currentState <= IDLE_S;
+            opcode <= 1'b0;
+        end
+        
         else begin
             currentState <= nextState;
             coeffCounter <= coeffCounterNext;
@@ -68,7 +87,8 @@ module ALU_Controller (
             clear <= clearVal;
             feedbackLoad <= feedbackLoadVal;
             opcode <= opcodeVal;
-            $display("[%0t] STATE=%0d -> NEXT=%0d  rjCnt=%0d rjAddr=%0d coeffCnt=%0d xVal=%0d",
+            Enable <= 1'b1;
+            $display("[%0t] ALUSTATE=%0d -> NEXT=%0d  rjCnt=%0d rjAddr=%0d coeffCnt=%0d xVal=%0d",
              $time, currentState, nextState,
              rjCounter, rjAddr, coeffCounter, xVal);
         end
@@ -91,10 +111,12 @@ module ALU_Controller (
         opcodeVal          = 1'b0;
 
         case(currentState) 
-            IDLE_S: if(!en_ALU)
+            IDLE_S: begin
+                    if(!en_ALU)
                         nextState = IDLE_S;
                     else
                         nextState = EXEC_S;
+                    end
             RESET_S: begin
                         rjCounterNext = 16'h0000;
                         rjAddrNext = 4'b0000;
