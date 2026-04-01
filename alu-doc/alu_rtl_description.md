@@ -170,37 +170,39 @@ The `MSDAP_ALU` design includes two reset mechanisms: a dedicated hardware reset
 | Reset Name | Synchronous/Asynchronous | Active High/Low | Associated Clock (if synchronous) | Description |
 |---|---|---|---|---|
 | `Reset_in` | Asynchronous | Active Low | N/A | Clears all internal registers, counters, addresses, and FSM state immediately on deassertion, regardless of clock. |
-| `en_ALU` | Synchronous | Active Low (reset when `0`) | `Sclk` | Clears counters, addresses, and FSM state on the next rising edge of `Sclk` when the ALU is disabled. |
+| `en_ALU` | Synchronous | Active Low (reset when `0`) | `Sclk` | Clears counters, addresses, and FSM state on the next rising edge of `Sclk` when the ALU is disabled. xVal value is retained |
 
 ## Annotated Block Diagram
-
+ 
 Both reset mechanisms affect the `ALU_Controller` submodule. When either reset is active, the following elements are cleared:
-
+ 
 - FSM state register (`currentState`) → `IDLE_S`
 - Address counters (`coeffCounter`, `rjCounter`, `rjAddr`, `xAddr`) → zero
 - Address outputs (`rj_address`, `coeff_address`, `x_address`) → zero
 - Control outputs (`load`, `shift_en`, `feedbackLoad`, `done`, `opcode`, `Enable`) → deasserted
-
+ 
 **`Reset_in` additionally asserts `clear`** to reset the `addSub` accumulator, which `en_ALU` deassertion does not do.
-
+ 
+**`xVal` is intentionally NOT cleared by `en_ALU` deassertion.** This preserves the current position in the input sample sequence so that when `en_ALU` is reasserted, the controller begins the next convolution from the correct sample position.
+ 
 ## Custom Reset Procedures
-
+ 
 ### Reset_in Procedure
-
+ 
 1. Deassert `Reset_in = 0`.
 2. All internal registers are immediately cleared asynchronously, independent of `Sclk`.
 3. The FSM returns to `IDLE_S` and `clear` is asserted to zero the accumulator.
 4. Assert `Reset_in = 1` to release reset. Normal operation begins when `en_ALU` is also asserted.
-
+ 
 ### en_ALU Procedure
-
+ 
 1. Deassert `en_ALU = 0`.
-2. On the next rising edge of `Sclk`, all counters, addresses, and FSM state are cleared.
-3. The FSM returns to `IDLE_S`. Note that `clear` is **not** asserted, so the accumulator retains its value.
-4. Assert `en_ALU = 1` to resume operation.
-
+2. On the next rising edge of `Sclk`, all counters, addresses, and FSM state are cleared — **except `xVal`, which is intentionally preserved**.
+3. The FSM returns to `IDLE_S`. Note that `clear` is **not** asserted, so the accumulator retains its value to be transferred to `P2S` module.
+4. Assert `en_ALU = 1` to resume operation. The controller picks up from the next `xVal` position, allowing it to continue the convolution sequence.
+ 
 ## References to External Documents
-
+ 
 None. The reset behavior is fully defined within the RTL implementation of the `ALU_Controller` submodule.
 
 # Arbitration, Fairness, QoS, and Forward Progress Guarantees
