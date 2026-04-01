@@ -163,43 +163,45 @@ Since the entire block operates within a single clock domain, no clock-domain cr
 
 # Reset Domains
 
-The `MSDAP_ALU` design does not include a dedicated reset input. Instead, the module uses the control signal `en_ALU` to initialize and clear the internal state of the controller and datapath.
-
-When `en_ALU` is deasserted (`0`), internal registers, counters, and control signals are reset to their initial values. When `en_ALU` is asserted (`1`), the controller begins execution of the ALU operation.
+The `MSDAP_ALU` design includes two reset mechanisms: a dedicated hardware reset signal `Reset_in` and a software-controlled enable signal `en_ALU`.
 
 ## Reset Domains Table
 
 | Reset Name | Synchronous/Asynchronous | Active High/Low | Associated Clock (if synchronous) | Description |
-|------------|--------------------------|-----------------|-----------------------------------|-------------|
-| `en_ALU` | Synchronous | Active Low (reset when `0`) | `Sclk` | Clears internal registers, counters, and FSM state when the ALU is disabled |
+|---|---|---|---|---|
+| `Reset_in` | Asynchronous | Active Low | N/A | Clears all internal registers, counters, addresses, and FSM state immediately on deassertion, regardless of clock. |
+| `en_ALU` | Synchronous | Active Low (reset when `0`) | `Sclk` | Clears counters, addresses, and FSM state on the next rising edge of `Sclk` when the ALU is disabled. |
 
 ## Annotated Block Diagram
 
-All submodules share the same reset behavior controlled by `en_ALU`. When `en_ALU` is low, the following elements are reset:
+Both reset mechanisms affect the `ALU_Controller` submodule. When either reset is active, the following elements are cleared:
 
-- FSM state register (`currentState`)
-- Address counters (`coeffCounter`, `rjCounter`)
-- Address outputs (`x_address`, `coeff_address`, `rj_address`)
-- Control outputs (`load`, `shift_en`, `feedbackLoad`, `done`)
+- FSM state register (`currentState`) → `IDLE_S`
+- Address counters (`coeffCounter`, `rjCounter`, `rjAddr`, `xAddr`) → zero
+- Address outputs (`rj_address`, `coeff_address`, `x_address`) → zero
+- Control outputs (`load`, `shift_en`, `feedbackLoad`, `done`, `opcode`, `Enable`) → deasserted
 
-The reset behavior is applied synchronously with the system clock.
+**`Reset_in` additionally asserts `clear`** to reset the `addSub` accumulator, which `en_ALU` deassertion does not do.
 
 ## Custom Reset Procedures
 
-The reset procedure for this block is defined by the behavior of the `en_ALU` signal.
+### Reset_in Procedure
 
-### Reset Procedure
+1. Deassert `Reset_in = 0`.
+2. All internal registers are immediately cleared asynchronously, independent of `Sclk`.
+3. The FSM returns to `IDLE_S` and `clear` is asserted to zero the accumulator.
+4. Assert `Reset_in = 1` to release reset. Normal operation begins when `en_ALU` is also asserted.
 
-1. Set `en_ALU = 0`.
-2. On the next rising edge of `Sclk`, all internal registers and counters are cleared.
-3. The FSM returns to the `IDLE_S` state.
-4. When `en_ALU = 1`, the controller transitions to the execution state and normal operation begins.
+### en_ALU Procedure
+
+1. Deassert `en_ALU = 0`.
+2. On the next rising edge of `Sclk`, all counters, addresses, and FSM state are cleared.
+3. The FSM returns to `IDLE_S`. Note that `clear` is **not** asserted, so the accumulator retains its value.
+4. Assert `en_ALU = 1` to resume operation.
 
 ## References to External Documents
 
-None. The reset behavior is fully defined within the RTL implementation of the `MSDAP_ALU` block.
-A proper reset signal will be added once the full project is complete.
-
+None. The reset behavior is fully defined within the RTL implementation of the `ALU_Controller` submodule.
 
 # Arbitration, Fairness, QoS, and Forward Progress Guarantees
 
