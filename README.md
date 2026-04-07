@@ -14,7 +14,7 @@ The MSDAP architecture supports an efficient sleep mode that automatically suspe
 
 | Date (YYYY-MM-DD) | Version | Description of Changes | Author | Reviewer |
 |-------------------|---------|------------------------|--------|----------|
-| 2026-04-01 | `0.1.0` | Initial full-design documentation. | Areeb Iqbal, Arham Virendra Dodal | Dr. Alice Wang |
+| 2026-04-01 | `0.2.0` | Initial full-design documentation. | Areeb Iqbal, Arham Virendra Dodal | Dr. Alice Wang |
 
 ---
 
