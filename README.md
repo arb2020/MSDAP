@@ -68,7 +68,7 @@ The **P2S (Parallel-to-Serial)** block receives the 40-bit ALU output and serial
 
 ## Diagram
 
-*(To be added)*
+![Schematic Diagram](image/schematic_of_dut_msdap_.png)
 
 ---
 
