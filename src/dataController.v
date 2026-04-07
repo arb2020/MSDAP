@@ -1,22 +1,22 @@
 module dataController(
     input wire Sclk,
-    input wire Dclk,
     input wire Start,
     input wire Reset_n,
     input wire Frame,
-    input wire InputL,
-    input wire InputR,
-    input wire zeroFlagfromS2P,
+    // input wire zeroFlagfromS2P,
+    input wire zeroFlagfromS2PL,
+    input wire zeroFlagfromS2PR,
 
     output reg InReady,
-    output reg OutputL,
-    output reg OutputR,
-    
+
+    output reg ClockGateEnable,
     output reg Reset_in,
     output reg Reset_ALU,
     output reg en_S2P,
     input wire InputReady,
-    input wire [15:0] Datain,
+    // input wire [15:0] Datain,
+    //input wire [15:0] DatainL,
+    //input wire [15:0] DatainR,
 
     output reg EnRj,
     output reg EnCoeff,
@@ -30,6 +30,7 @@ module dataController(
 
     output reg en_P2S,
     input wire DataDone
+
 );
 
 
@@ -52,7 +53,7 @@ module dataController(
     reg [8:0] coeffCounter, coeffCounterNext; //For counting the values of coeff.
     reg [7:0] xCounter, xCounterNext; //For counting the values of input values being stored in the circular loop.
     reg [9:0] zeroCounter, zeroCounterNext; //For counting the values of zero
-    reg InReadyNext, OutputLNext, OutputRNext;
+    reg InReadyNext;
     reg Reset_inNext, Reset_ALUNext;
     reg en_S2PNext, EnRjNext, EnCoeffNext, EnXNext;
     reg WModeNext, en_ALUNext, en_P2SNext, en_P2SVal;
@@ -65,6 +66,7 @@ module dataController(
     reg [8:0] WAddrVal ,WAddrNext; 
     reg [7:0] xWAddrNext, xWAddrVal;
     reg tk, tkNext;
+    reg ClockGateEnableNext;
  
     always @(posedge Sclk) begin
         if(Start) begin
@@ -92,10 +94,9 @@ module dataController(
             xWAddrVal       <= 8'h00;
             p2sCounter      <= 6'd0;
             InReady         <= 1'b0;
-            OutputL         <= 1'b0;
-            OutputR         <= 1'b0;
             Reset_in        <= 1'b0;
             Reset_ALU       <= 1'b0;
+            ClockGateEnable <= 1'b1;
             tk              <= 1'b0;
             inputReceived   <= 1'b0;
             currentState    <= INIT_S;
@@ -136,8 +137,8 @@ module dataController(
             xStored     <= xStoredNext;
 
             InReady     <= InReadyNext;
-            OutputL     <= OutputLNext;
-            OutputR     <= OutputRNext;
+
+            ClockGateEnable <= ClockGateEnableNext;
 
             Reset_in    <= Reset_inNext;
             Reset_ALU   <= Reset_ALUNext;
@@ -168,9 +169,6 @@ module dataController(
         // Control signals
         InReadyNext  = 1'b0;
 
-        OutputLNext  = 1'b0;
-        OutputRNext  = 1'b0;
-
         en_S2PNext   = 1'b0;
         en_P2SNext   = en_P2SVal;
         en_ALUNext   = 1'b0;
@@ -188,13 +186,15 @@ module dataController(
         Reset_inNext = 1'b1;
         Reset_ALUNext = 1'b1;
 
+        ClockGateEnableNext = 1'b1;
+
         case(currentState) 
 
             INIT_S:         begin
                                 en_S2PNext = 1'b1;
                                 Reset_inNext = 1'b0;
-                                Reset_ALUNext = 1'b0;
-                                if(InputReady && (Datain == 16'h0000)) begin
+                                // if(InputReady && (Datain == 16'h0000)) begin
+                                if(zeroFlagfromS2PL && zeroFlagfromS2PR) begin
                                     nextState = INIT_COUNT_S;
                                 end
                                 else nextState = INIT_S;
@@ -215,7 +215,7 @@ module dataController(
                                     nextState = WAIT_RJ_S;
                                     en_S2PNext = 1'b1;
                                 end
-                                else nextState = INIT_COUNT_S;                            
+                                else nextState = INIT_COUNT_S;
                             end
             WAIT_RJ_S:      begin
                                 en_S2PNext  = 1'b1;
@@ -307,7 +307,6 @@ module dataController(
                                 xWModeNext = 1'b1;
                                 xWAddrNext = xCounter;
                                 Reset_inNext = 1'b0;
-                                Reset_ALUNext = 1'b0;
                                 en_S2PNext = 1'b1;
                             end
                             else if(Frame && !InputReady) begin
@@ -324,7 +323,6 @@ module dataController(
                                     xStoredNext = 1'b0;
                                     xCounterNext = 8'h00;
                                     Reset_inNext = 1'b0;
-                                    Reset_ALUNext = 1'b0;
                                     en_S2PNext = 1'b1;
                                     EnXNext = 1'b1;
                                     xWModeNext = 1'b1;
@@ -341,7 +339,13 @@ module dataController(
                                         xWModeNext = 1'b1;
                                         xWAddrNext = xCounter;
                                         xCounterNext = xCounter + 1'b1;
-                                        if(zeroFlagfromS2P) begin
+                                        // if(zeroFlagfromS2P) begin
+                                        //     zeroCounterNext = zeroCounter + 1'b1;
+                                        // end
+                                        // else begin
+                                        //     zeroCounterNext = 10'd0;
+                                        // end
+                                        if(zeroFlagfromS2PL && zeroFlagfromS2PR) begin
                                             zeroCounterNext = zeroCounter + 1'b1;
                                         end
                                         else begin
@@ -355,20 +359,20 @@ module dataController(
                                     if(done) begin
                                         xStoredNext = 1'b0;
                                     end
-                                end
-                                if(zeroCounter == 10'd301) begin
-                                        sleepingStateNext = 1'b1;
-                                end
-                                if(sleepingState && DataDone) begin
-                                    nextState = SLEEPING_S;
-                                    en_P2SNext = 1'b0;
-                                    InReadyNext = 1'b1;
-                                    xStoredNext = 1'b0;
-                                    Reset_ALUNext = 1'b0;
-                                end
-                                else
-                                    nextState = WORKING_S;
                                 
+                                    if(zeroCounter == 10'd801) begin
+                                        sleepingStateNext = 1'b1;
+                                    end
+                                    if(sleepingState && DataDone) begin
+                                        nextState = SLEEPING_S;
+                                        en_P2SNext = 1'b0;
+                                        InReadyNext = 1'b1;
+                                        xStoredNext = 1'b0;
+                                        Reset_ALUNext = 1'b0;
+                                    end
+                                    else
+                                        nextState = WORKING_S;
+                                end
                             end                    
             CLEARING_S:     begin
                                 $display("Time=%0t | RESET SUCCESS | xCounter=%0d", $time, xCounter);
@@ -382,7 +386,6 @@ module dataController(
                                     nextState = CLEARING_S;
                                     xCounterNext = 8'h00;  // restart the sweep from 0
                                     Reset_inNext = 1'b0;
-                                    Reset_ALUNext = 1'b0;
                                     en_S2PNext = 1'b1;
                                 end
                                 else if(xCounter == 8'hFF) begin
@@ -395,22 +398,29 @@ module dataController(
                                 end                             
                             end
             SLEEPING_S:     begin
+                                ClockGateEnableNext = 1'b0;
                                 InReadyNext = 1'b1;
                                 en_S2PNext = 1'b1;
                                 if(!Reset_n) begin
-                                   nextState = CLEARING_S; 
-                                   xCounterNext = 8'h00;
+                                    nextState       = CLEARING_S; 
+                                    xCounterNext    = 8'h00;
+                                    xStoredNext     = 1'b0;
+                                    sleepingStateNext = 1'b0;    // critical — clear sleep flag
+                                    zeroCounterNext = 10'd0;     // clear zero counter
+                                    Reset_inNext    = 1'b0;
+                                    en_S2PNext      = 1'b1;
                                 end
 
                                 else if(InputReady) begin
-                                    if(zeroFlagfromS2P) begin
+                                    // if(zeroFlagfromS2P) begin
+                                    if(zeroFlagfromS2PL && zeroFlagfromS2PR) begin
                                         nextState = SLEEPING_S;
                                     end
                                     else begin
                                         xCounterNext = 8'h00;
                                         nextState = WORKING_S;
                                         sleepingStateNext = 1'b0;
-                                        zeroCounterNext = 1'b0;
+                                        zeroCounterNext = 10'd0;
 
                                     end
                                 end  
