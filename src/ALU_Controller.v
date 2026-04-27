@@ -1,19 +1,18 @@
 module ALU_Controller (
 
-    input wire [15:0] rj,
+    input wire [7:0] rj,
     output reg [3:0] rj_address,
-    input wire [15:0] coeff,
+    input wire [8:0] coeff,
     output reg [8:0] coeff_address,
     output reg [7:0] x_address,
     input Sclk, en_ALU, Reset_in,
     output reg opcode,
-    output reg Enable,
     output reg load, shift_en, done, feedbackLoad, clear
 
 );
 
     reg [8:0] coeffCounter, coeffCounterNext;
-    reg [15:0] rjCounter, rjCounterNext;
+    reg [7:0] rjCounter, rjCounterNext;
     reg [3:0] rjAddr, rjAddrNext;
     reg [7:0] xVal, xValNext;
     reg [7:0] xAddr, xAddrNext;
@@ -37,7 +36,7 @@ module ALU_Controller (
 
     always @(posedge Sclk or negedge Reset_in) begin
         if(!Reset_in) begin
-            rjCounter <= 16'h0000;
+            rjCounter <= 8'h0000;
             rjAddr <= 4'b0000;
             rj_address <= 4'h0;
             coeffCounter <= 9'b000000000;
@@ -52,7 +51,6 @@ module ALU_Controller (
             currentState <= IDLE_S;
             clear <= 1'b1;
             opcode <= 1'b0;
-            Enable <= 1'b0;
         end
         else if(!en_ALU) begin
             rjCounter <= 16'h0000;
@@ -66,7 +64,6 @@ module ALU_Controller (
             load <= 1'b0;
             feedbackLoad <= 1'b0;
             done <= 1'b0;
-            Enable <= 1'b0;
             currentState <= IDLE_S;
             opcode <= 1'b0;
         end
@@ -87,10 +84,9 @@ module ALU_Controller (
             clear <= clearVal;
             feedbackLoad <= feedbackLoadVal;
             opcode <= opcodeVal;
-            Enable <= 1'b1;
-            $display("[%0t] ALUSTATE=%0d -> NEXT=%0d  rjCnt=%0d rjAddr=%0d coeffCnt=%0d xVal=%0d",
-             $time, currentState, nextState,
-             rjCounter, rjAddr, coeffCounter, xVal);
+            //$display("[%0t] ALUSTATE=%0d -> NEXT=%0d  rjCnt=%0d rjAddr=%0d coeffCnt=%0d xVal=%0d",
+             //$time, currentState, nextState,
+             //rjCounter, rjAddr, coeffCounter, xVal);
         end
     end
 
@@ -118,7 +114,7 @@ module ALU_Controller (
                         nextState = EXEC_S;
                     end
             RESET_S: begin
-                        rjCounterNext = 16'h0000;
+                        rjCounterNext = 8'h0000;
                         rjAddrNext = 4'b0000;
                         coeffCounterNext = 9'b000000000;
                         nextState = IDLE_S;
@@ -140,7 +136,7 @@ module ALU_Controller (
 
                         // if that increment completes the inner loop, shift
                         if (rjCounterNext == rj) begin
-                            rjCounterNext = 16'h0000;
+                            rjCounterNext = 8'h0000;
                             rjAddrNext    = rjAddr + 1'b1;
                             nextState = ADD_N_SHIFT_S;
                         end else begin
@@ -177,4 +173,4 @@ module ALU_Controller (
     
     
 
-endmodule : ALU_Controller
+endmodule

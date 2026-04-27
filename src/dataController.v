@@ -3,9 +3,9 @@ module dataController(
     input wire Start,
     input wire Reset_n,
     input wire Frame,
-    // input wire zeroFlagfromS2P,
     input wire zeroFlagfromS2PL,
     input wire zeroFlagfromS2PR,
+    input wire all_zeros,
 
     output reg InReady,
 
@@ -14,19 +14,17 @@ module dataController(
     output reg Reset_ALU,
     output reg en_S2P,
     input wire InputReady,
-    // input wire [15:0] Datain,
-    //input wire [15:0] DatainL,
-    //input wire [15:0] DatainR,
 
     output reg EnRj,
     output reg EnCoeff,
     output reg EnX,
     output reg WMode,
-    output reg xWMode,
     output reg [8:0] WAddr,
-    output reg [7:0] xWAddr,
     output reg en_ALU,
     input wire done,
+
+    output reg xStart,
+    output reg xClear,
 
     output reg en_P2S,
     input wire DataDone
@@ -52,19 +50,17 @@ module dataController(
     reg [3:0] rjCounter, rjCounterNext; //For counting the values of Rj being stored.
     reg [8:0] coeffCounter, coeffCounterNext; //For counting the values of coeff.
     reg [7:0] xCounter, xCounterNext; //For counting the values of input values being stored in the circular loop.
-    reg [9:0] zeroCounter, zeroCounterNext; //For counting the values of zero
     reg InReadyNext;
     reg Reset_inNext, Reset_ALUNext;
     reg en_S2PNext, EnRjNext, EnCoeffNext, EnXNext;
     reg WModeNext, en_ALUNext, en_P2SNext, en_P2SVal;
-    reg xWModeVal, xWModeNext;
+    reg xStartNext, xClearNext;
     reg xStored, xStoredNext;
     reg doneVal, doneValNext;
     reg sleepingState, sleepingStateNext;
     reg inputReceived, inputReceivedNext;
     reg [5:0] p2sCounter, p2sCounterNext;
     reg [8:0] WAddrVal ,WAddrNext; 
-    reg [7:0] xWAddrNext, xWAddrVal;
     reg tk, tkNext;
     reg ClockGateEnableNext;
  
@@ -74,7 +70,6 @@ module dataController(
             rjCounter       <= 4'h0;
             coeffCounter    <= 9'h000;
             xCounter        <= 8'h00;
-            zeroCounter     <= 10'h000;
             doneVal         <= 1'b1;
             en_P2SVal       <= 1'b0;
             en_S2P          <= 1'b0;
@@ -86,16 +81,14 @@ module dataController(
             WMode           <= 1'b0;
             WAddr           <= 9'h000;
             WAddrVal        <= 9'h000;
-            xWModeVal       <= 1'b0;
             xStored         <= 1'b0;
             sleepingState   <= 1'b0;
-            xWMode          <= 1'b0;
-            xWAddr          <= 8'h00;
-            xWAddrVal       <= 8'h00;
             p2sCounter      <= 6'd0;
             InReady         <= 1'b0;
             Reset_in        <= 1'b0;
             Reset_ALU       <= 1'b0;
+            xStart          <= 1'b1;
+            xClear          <= 1'b0;
             ClockGateEnable <= 1'b1;
             tk              <= 1'b0;
             inputReceived   <= 1'b0;
@@ -110,7 +103,6 @@ module dataController(
             rjCounter    <= rjCounterNext;
             coeffCounter <= coeffCounterNext;
             xCounter     <= xCounterNext;
-            zeroCounter  <= zeroCounterNext;
             doneVal      <= doneValNext;
             tk           <= tkNext;
             p2sCounter   <= p2sCounterNext;
@@ -130,11 +122,9 @@ module dataController(
             WMode       <= WModeNext;
             WAddr       <= WAddrNext;
             WAddrVal    <= WAddrNext;
-            xWAddr      <= xWAddrNext;
-            xWAddrVal   <= xWAddrNext;
-            xWMode      <= xWModeNext;
-            xWModeVal   <= xWModeNext;
             xStored     <= xStoredNext;
+            xStart      <= xStartNext;
+            xClear      <= xClearNext;
 
             InReady     <= InReadyNext;
 
@@ -156,12 +146,10 @@ module dataController(
         rjCounterNext       = rjCounter;
         coeffCounterNext    = coeffCounter;
         xCounterNext        = xCounter;
-        zeroCounterNext     = zeroCounter;
         doneValNext         = doneVal;
         tkNext              = tk;
         p2sCounterNext      = p2sCounter;
         inputReceivedNext   = inputReceived;
-	    xWModeNext 	        = xWModeVal;
         sleepingStateNext   = sleepingState;
 
 
@@ -179,9 +167,12 @@ module dataController(
 
 
         WModeNext    = 1'b0;
+
+
         WAddrNext    = WAddrVal;
-        xWAddrNext   = xWAddrVal;
         xStoredNext  = xStored;
+        xStartNext   = 1'b0;
+        xClearNext   = 1'b0;
 
         Reset_inNext = 1'b1;
         Reset_ALUNext = 1'b1;
@@ -193,7 +184,6 @@ module dataController(
             INIT_S:         begin
                                 en_S2PNext = 1'b1;
                                 Reset_inNext = 1'b0;
-                                // if(InputReady && (Datain == 16'h0000)) begin
                                 if(zeroFlagfromS2PL && zeroFlagfromS2PR) begin
                                     nextState = INIT_COUNT_S;
                                 end
@@ -206,9 +196,8 @@ module dataController(
                                 EnRjNext    = 1'b1;
                                 EnXNext     = 1'b1;
                                 WModeNext   = 1'b1;
-                                xWModeNext  = 1'b1;
                                 WAddrNext   = initCounter;
-                                xWAddrNext  = initCounter[7:0];
+                                xStartNext  = 1'b1;
                                 initCounterNext = initCounter + 1'b1;
 
                                 if(initCounter >= 9'h1FF) begin
@@ -298,14 +287,13 @@ module dataController(
                             InReadyNext       = 1'b1;
                             tkNext            = 1'b0;
                             inputReceivedNext = 1'b0;
-                            zeroCounterNext   = 10'd0;
 
                             if(!Reset_n) begin
                                 nextState = CLEARING_S;
                                 xCounterNext = 8'h00;
                                 EnXNext = 1'b1;
-                                xWModeNext = 1'b1;
-                                xWAddrNext = xCounter;
+                                WModeNext = 1'b1;
+                                WAddrNext = {1'b0,xCounter};
                                 Reset_inNext = 1'b0;
                                 en_S2PNext = 1'b1;
                             end
@@ -324,9 +312,10 @@ module dataController(
                                     xCounterNext = 8'h00;
                                     Reset_inNext = 1'b0;
                                     en_S2PNext = 1'b1;
+                                    xClearNext = 1'b1;
                                     EnXNext = 1'b1;
-                                    xWModeNext = 1'b1;
-                                    xWAddrNext = xCounter;
+                                    WModeNext = 1'b1;
+                                    WAddrNext = {1'b0, xCounter};
                                 end
                                 else begin
                                     en_S2PNext  = 1'b1;
@@ -336,31 +325,22 @@ module dataController(
                                     if(InputReady && !xStored) begin
                                         EnXNext = 1'b1;
                                         xStoredNext = 1'b1;
-                                        xWModeNext = 1'b1;
-                                        xWAddrNext = xCounter;
+                                        WModeNext = 1'b1;
+                                        WAddrNext = {1'b0,xCounter};
                                         xCounterNext = xCounter + 1'b1;
-                                        // if(zeroFlagfromS2P) begin
-                                        //     zeroCounterNext = zeroCounter + 1'b1;
-                                        // end
-                                        // else begin
-                                        //     zeroCounterNext = 10'd0;
-                                        // end
-                                        if(zeroFlagfromS2PL && zeroFlagfromS2PR) begin
-                                            zeroCounterNext = zeroCounter + 1'b1;
-                                        end
-                                        else begin
-                                            zeroCounterNext = 10'd0;
-                                        end
                                         nextState = WORKING_S;
                                     end
                                     if(xStored) begin
                                         en_ALUNext = 1'b1;
+                                        EnXNext = 1'b1;
+                                        EnCoeffNext = 1'b1;
+                                        EnRjNext = 1'b1;
                                     end
                                     if(done) begin
                                         xStoredNext = 1'b0;
                                     end
                                 
-                                    if(zeroCounter == 10'd801) begin
+                                    if(all_zeros == 1'b1) begin
                                         sleepingStateNext = 1'b1;
                                     end
                                     if(sleepingState && DataDone) begin
@@ -369,19 +349,23 @@ module dataController(
                                         InReadyNext = 1'b1;
                                         xStoredNext = 1'b0;
                                         Reset_ALUNext = 1'b0;
+                                        EnXNext = 1'b1;
+                                        WModeNext = 1'b1;
+                                        WAddrNext = {1'b0,8'b00000000};
                                     end
                                     else
                                         nextState = WORKING_S;
                                 end
                             end                    
             CLEARING_S:     begin
-                                $display("Time=%0t | RESET SUCCESS | xCounter=%0d", $time, xCounter);
+                                //$display("Time=%0t | RESET SUCCESS | xCounter=%0d", $time, xCounter);
                                 InReadyNext = 1'b0;
                                 tkNext = 1'b0;
                                 xCounterNext = xCounter + 1'b1;
                                 EnXNext = 1'b1;
-                                xWModeNext = 1'b1;
-                                xWAddrNext = xCounter;
+                                WModeNext = 1'b1;
+                                WAddrNext = {1'b0,xCounter};
+                                xClearNext = 1'b1;
                                 if(!Reset_n) begin
                                     nextState = CLEARING_S;
                                     xCounterNext = 8'h00;  // restart the sweep from 0
@@ -395,32 +379,37 @@ module dataController(
                                 else begin
                                     nextState = CLEARING_S;
                                     
-                                end                             
+                                end 
                             end
             SLEEPING_S:     begin
                                 ClockGateEnableNext = 1'b0;
                                 InReadyNext = 1'b1;
                                 en_S2PNext = 1'b1;
+                                EnXNext = 1'b1;
+                                WModeNext = 1'b1;
+                                WAddrNext = 9'b000000000;
                                 if(!Reset_n) begin
-                                    nextState       = CLEARING_S; 
-                                    xCounterNext    = 8'h00;
-                                    xStoredNext     = 1'b0;
-                                    sleepingStateNext = 1'b0;    // critical — clear sleep flag
-                                    zeroCounterNext = 10'd0;     // clear zero counter
-                                    Reset_inNext    = 1'b0;
-                                    en_S2PNext      = 1'b1;
+                                    nextState           = CLEARING_S; 
+                                    xCounterNext        = 8'h00;
+                                    xStoredNext         = 1'b0;
+                                    sleepingStateNext   = 1'b0;    // critical — clear sleep flag
+                                    Reset_inNext        = 1'b0;
+                                    en_S2PNext          = 1'b1;
+                                    xClearNext          = 1'b1;
+                                    EnXNext             = 1'b1;
+                                    WModeNext           = 1'b1;
+                                    WAddrNext           = 9'b000000000;
                                 end
 
                                 else if(InputReady) begin
                                     // if(zeroFlagfromS2P) begin
-                                    if(zeroFlagfromS2PL && zeroFlagfromS2PR) begin
+                                    if(all_zeros == 1'b1) begin
                                         nextState = SLEEPING_S;
                                     end
                                     else begin
                                         xCounterNext = 8'h00;
                                         nextState = WORKING_S;
                                         sleepingStateNext = 1'b0;
-                                        zeroCounterNext = 10'd0;
 
                                     end
                                 end  

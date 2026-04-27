@@ -1,9 +1,7 @@
 
 `include "behavioral_sv/dataController.v"
 `include "behavioral_sv/MSDAP_ALU.v"
-`include "behavioral_sv/RjMem.v"
-`include "behavioral_sv/CoeffMem.v"
-`include "behavioral_sv/xMem.v"
+`include "behavioral_sv/memory_macros.v"
 `include "behavioral_sv/S2P.v"
 `include "behavioral_sv/P2S.v"
 
@@ -29,7 +27,6 @@ module MSDAP(
     wire Reset_ALU;
     wire en_S2P;
     wire InputReady;
-    // wire [15:0] Datain;
     wire [15:0] DatainL;
     wire [15:0] DatainR;
 
@@ -38,38 +35,34 @@ module MSDAP(
     wire EnX;
     wire WMode;
     wire xWMode;
-    wire [8:0] WAddr;
-    wire [7:0] xWAddr;
+    wire [8:0] Addr;
+    wire [3:0] rj_raddrL, rj_raddrR;
+    wire [3:0] rj_addrL, rj_addrR;
+    wire [8:0] coeff_raddrL, coeff_raddrR;
+    wire [8:0] coeff_addrL, coeff_addrR;
+    wire [7:0] x_raddrL, x_raddrR;
+    wire [7:0] x_addrL, x_addrR;
+    wire [7:0] xAddr;
     wire en_ALU;
     wire done, doneL, doneR;
 
     wire en_P2S;
     wire DataDone;
 
-    // wire [15:0] rj_data;
-    // wire [15:0] coeff_data;
-    // wire [15:0] x_data;
-    // wire zeroFlagD2S2P;
-    wire [15:0] rj_dataL;
-    wire [15:0] rj_dataR;
-    wire [15:0] coeff_dataL;
-    wire [15:0] coeff_dataR;
+    wire [7:0] rj_dataL;
+    wire [7:0] rj_dataR;
+    wire [8:0] coeff_dataL;
+    wire [8:0] coeff_dataR;
     wire [15:0] x_dataL;
     wire [15:0] x_dataR;
     wire zeroFlagD2S2PL;
     wire zeroFlagD2S2PR;
+    wire all_zeros, all_zeros_l, all_zeros_r;
+    wire xStart, xClear;
 
-    wire [3:0] rj_addressL;
-    wire [8:0] coeff_addressL;
-    wire [7:0] x_addressL;
-    wire [3:0] rj_addressR;
-    wire [8:0] coeff_addressR;
-    wire [7:0] x_addressR;
     // wire [39:0] y;
     wire [39:0] yL;
     wire [39:0] yR;
-    wire RModeL;
-    wire RModeR;
 
     wire Reset_inALU;
     wire ClockGateEnable;
@@ -78,6 +71,9 @@ module MSDAP(
     and u0(Sclk_out, Sclk, ClockGateEnable);
     and u1(Reset_inALU, Reset_in, Reset_ALU);
     and u2(done, doneL, doneR);
+    and u3(all_zeros, all_zeros_l, all_zeros_r);
+
+    
 
     // -----------------------------------------------------------------
     // Controller
@@ -94,8 +90,7 @@ module MSDAP(
         .Reset_in(Reset_in),
         .en_S2P(en_S2P),
         .InputReady(InputReady),
-    //    .DatainL(DatainL),
-    //    .DatainR(DatainR),
+
         .zeroFlagfromS2PL(zeroFlagD2S2PL),
         .zeroFlagfromS2PR(zeroFlagD2S2PR),
 
@@ -103,29 +98,18 @@ module MSDAP(
         .EnCoeff(EnCoeff),
         .EnX(EnX),
         .WMode(WMode),
-        .xWMode(xWMode),
-        .WAddr(WAddr),
-        .xWAddr(xWAddr),
+        .WAddr(Addr),
         .en_ALU(en_ALU),
         .Reset_ALU(Reset_ALU),
         .done(done),
+        .all_zeros(all_zeros),
+        .xStart(xStart),
+        .xClear(xClear),
 
         .en_P2S(en_P2S),
         .DataDone(DataDone)
     );
-    // .Datain(Datain),
-    // .zeroFlagfromS2P(zeroFlagD2S2P),
 
-    // S2P s2p_in (
-    //     .InputL_R(InputL),
-    //     .Dclk(Dclk),
-    //     .Frame(Frame),
-    //     .Reset_n(Reset_in),
-    //     .en_S2P(en_S2P),
-    //     .Input_Ready(InputReady),
-    //     .zeroFlag(zeroFlagD2S2P),
-    //     .DataIn(Datain)
-    // );
     S2P s2p_in (
         .InputL(InputL),
         .InputR(InputR),
@@ -139,46 +123,14 @@ module MSDAP(
         .DataInL(DatainL),
         .DataInR(DatainR)
     );
-
-    // RjMem rj_mem (
-    //     .Enable(EnRj),
-    //     .Sclk(Sclk_out),
-    //     .WMode(WMode),
-    //     .WAddr(WAddr[3:0]),
-    //     .DataIn(Datain),
-    //     .rj_address(rj_address),
-    //     .rj(rj_data),
-    //     .RMode(RMode)
-    // );
-    //
-    // CoeffMem coeff_mem (
-    //     .Enable(EnCoeff),
-    //     .Sclk(Sclk_out),
-    //     .WMode(WMode),
-    //     .WAddr(WAddr),
-    //     .DataIn(Datain),
-    //     .coeff_address(coeff_address),
-    //     .coeff(coeff_data),
-    //     .RMode(RMode)
-    // );
-    //
-    // xMem x_mem (
-    //     .Enable(EnX),
-    //     .Sclk(Sclk_out),
-    //     .WMode(xWMode),
-    //     .WAddr(xWAddr),
-    //     .DataIn(Datain),
-    //     .x_address(x_address),
-    //     .x(x_data),
-    //     .RMode(RMode)
-    // );
+    /* 
     RjMem rj_mem_l (
         .Enable(EnRj),
         .Sclk(Sclk_out),
         .WMode(WMode),
-        .WAddr(WAddr[3:0]),
+        .Addr(Addr[3:0]),
         .DataIn(DatainL),
-        .rj_address(rj_addressL),
+        .rj_raddr(rj_raddrL),
         .rj(rj_dataL),
         .RMode(RModeL)
     );
@@ -187,20 +139,44 @@ module MSDAP(
         .Enable(EnRj),
         .Sclk(Sclk_out),
         .WMode(WMode),
-        .WAddr(WAddr[3:0]),
+        .Addr(Addr[3:0]),
         .DataIn(DatainR),
-        .rj_address(rj_addressR),
+        .rj_raddr(rj_raddrR),
         .rj(rj_dataR),
         .RMode(RModeR)
     );
+    */
+    
+    assign rj_addrL = WMode ? Addr[3:0] : rj_raddrL;
 
+    R_MEM rj_mem_l (
+        .RW0_en(EnRj),
+        .RW0_clk(Sclk_out),
+        .RW0_addr(rj_addrL),
+        .RW0_wdata(DatainL[7:0]),
+        .RW0_rdata(rj_dataL),
+        .RW0_wmode(WMode)
+    );
+
+    assign rj_addrR = WMode ? Addr[3:0] : rj_raddrR;
+
+    R_MEM rj_mem_r (
+        .RW0_en(EnRj),
+        .RW0_clk(Sclk_out),
+        .RW0_addr(rj_addrR),
+        .RW0_wdata(DatainR[7:0]),
+        .RW0_rdata(rj_dataR),
+        .RW0_wmode(WMode)
+    );
+
+    /*
     CoeffMem coeff_mem_l (
         .Enable(EnCoeff),
         .Sclk(Sclk_out),
         .WMode(WMode),
-        .WAddr(WAddr),
+        .Addr(Addr),
         .DataIn(DatainL),
-        .coeff_address(coeff_addressL),
+        .coeff_radddr(coeff_radddrL),
         .coeff(coeff_dataL),
         .RMode(RModeL)
     );
@@ -209,18 +185,44 @@ module MSDAP(
         .Enable(EnCoeff),
         .Sclk(Sclk_out),
         .WMode(WMode),
-        .WAddr(WAddr),
+        .Addr(Addr),
         .DataIn(DatainR),
-        .coeff_address(coeff_addressR),
+        .coeff_radddr(coeff_radddrR),
         .coeff(coeff_dataR),
         .RMode(RModeR)
     );
+    */
 
+    assign coeff_addrL = WMode ? Addr : coeff_raddrL;
+
+    CO_MEM coeff_mem_l(
+        .RW0_clk(Sclk_out),
+        .RW0_en(EnCoeff),
+        .RW0_addr(coeff_addrL),
+        .RW0_rdata(coeff_dataL),
+        .RW0_wdata(DatainL[8:0]),
+        .RW0_wmode(WMode),
+        .Start(1'b0)
+    );
+
+    assign coeff_addrR = WMode ? Addr : coeff_raddrR;
+
+    CO_MEM coeff_mem_r(
+        .RW0_clk(Sclk_out),
+        .RW0_en(EnCoeff),
+        .RW0_addr(coeff_addrR),
+        .RW0_rdata(coeff_dataR),
+        .RW0_wdata(DatainR[8:0]),
+        .RW0_wmode(WMode),
+        .Start(1'b0)
+    );
+
+    /* 
     xMem x_mem_l (
         .Enable(EnX),
         .Sclk(Sclk_out),
         .WMode(xWMode),
-        .WAddr(xWAddr),
+        .Addr(xAddr),
         .DataIn(DatainL),
         .x_address(x_addressL),
         .x(x_dataL),
@@ -231,67 +233,73 @@ module MSDAP(
         .Enable(EnX),
         .Sclk(Sclk_out),
         .WMode(xWMode),
-        .WAddr(xWAddr),
+        .Addr(xAddr),
         .DataIn(DatainR),
         .x_address(x_addressR),
         .x(x_dataR),
         .RMode(RModeR)
     );
 
-    // MSDAP_ALU alu_path (
-    //     .x(x_data),
-    //     .rj(rj_data),
-    //     .rj_address(rj_address),
-    //     .coeff(coeff_data),
-    //     .coeff_address(coeff_address),
-    //     .x_address(x_address),
-    //     .y(y),
-    //     .Sclk(Sclk_out),
-    //     .en_ALU(en_ALU),
-    //     .Reset_n(Reset_inALU),
-    //     .done(done),
-    //     .Enable(RMode)
-    // );
+    */
+
+    assign x_addrL = WMode ? Addr[7:0] : x_raddrL;
+
+    X_MEM x_mem_l(
+        .RW0_clk(Sclk),
+        .RW0_en(EnX),
+        .RW0_addr(x_addrL),
+        .RW0_rdata(x_dataL),
+        .RW0_wdata(DatainL),
+        .RW0_wmode(WMode),
+        .all_zeros(all_zeros_l),
+        .Start(xStart),
+        .clear(xClear)
+    );
+
+    assign x_addrR = WMode ? Addr[7:0] : x_raddrR;
+
+    X_MEM x_mem_r(
+        .RW0_clk(Sclk),
+        .RW0_en(EnX),
+        .RW0_addr(x_addrR),
+        .RW0_rdata(x_dataR),
+        .RW0_wdata(DatainR),
+        .RW0_wmode(WMode),
+        .all_zeros(all_zeros_r),
+        .Start(xStart),
+        .clear(xClear)
+    );
+
+
    MSDAP_ALU alu_pathL (
         .x(x_dataL),
         .rj(rj_dataL),
-        .rj_address(rj_addressL),
+        .rj_address(rj_raddrL),
         .coeff(coeff_dataL),
-        .coeff_address(coeff_addressL),
-        .x_address(x_addressL),
+        .coeff_address(coeff_raddrL),
+        .x_address(x_raddrL),
         .y(yL),
         .Sclk(Sclk_out),
         .en_ALU(en_ALU),
         .Reset_n(Reset_inALU),
-        .done(doneL),
-        .Enable(RModeL)
+        .done(doneL)
     );
 
     MSDAP_ALU alu_pathR (
         .x(x_dataR),
         .rj(rj_dataR),
-        .rj_address(rj_addressR),
+        .rj_address(rj_raddrR),
         .coeff(coeff_dataR),
-        .coeff_address(coeff_addressR),
-        .x_address(x_addressR),
+        .coeff_address(coeff_raddrR),
+        .x_address(x_raddrR),
         .y(yR),
         .Sclk(Sclk_out),
         .en_ALU(en_ALU),
         .Reset_n(Reset_inALU),
-        .done(doneR),
-        .Enable(RModeR)
+        .done(doneR)
     );
 
-    // P2S p2s_out (
-    //     .DataOut(y),
-    //     .done(done),
-    //     .Sclk(Sclk_out),
-    //     .en_P2S(en_P2S),
-    //     .Reset_n(Reset_in),
-    //     .OutputL_R(OutputL),
-    //     .DataDone(DataDone),
-    //     .OutputReady(OutReady)
-    // );
+
     P2S p2s_out (
         .DataOutL(yL),
         .DataOutR(yR),

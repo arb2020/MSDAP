@@ -5,4 +5,4 @@ module signExt #(parameter INPUTSIZE = 16, parameter OUTPUTSIZE = 40)(
         
     assign out  = (in[INPUTSIZE-1]) ? {8'hFF, in, 16'h0000} : {8'h00, in, 16'h0000};
     
-endmodule : signExt
+endmodule

@@ -19,4 +19,4 @@ module oneBitShift (
                 //$time, clear, shift_en, addOp, yOut);
     end
 
-endmodule : oneBitShift
+endmodule
